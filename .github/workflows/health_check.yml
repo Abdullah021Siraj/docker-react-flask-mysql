@@ -12,7 +12,7 @@ jobs:
       MYSQL_DB: ${{ secrets.MYSQL_DB }}
       MYSQL_USER: ${{ secrets.MYSQL_USER }}
       MYSQL_PASSWORD: ${{ secrets.MYSQL_PASSWORD }}
-      MYSQL_HOST: ${{ secrets.MYSQL_HOST }}
+      MYSQL_HOST: db
       REACT_APP_API_URL: ${{ secrets.REACT_APP_API_URL }}
 
     steps:
@@ -35,6 +35,4 @@ jobs:
 
       - name: DB connectivity test from backend container
         run: |
-          docker exec flask-backend python -c "import pymysql, sys; \
-try: pymysql.connect(host='db', user='${MYSQL_USER}', password='${MYSQL_PASSWORD}', db='${MYSQL_DB}'); \
-except Exception as e: print(e); sys.exit(1)"
+          docker exec flask-backend python -c "import pymysql, sys; pymysql.connect(host='db', user='${MYSQL_USER}', password='${MYSQL_PASSWORD}', db='${MYSQL_DB}')"
