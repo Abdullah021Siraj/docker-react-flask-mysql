@@ -7,3 +7,4 @@ pymysql
 pytest
 pytest-flask
 requests
+Werkzeug<3
