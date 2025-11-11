@@ -29,8 +29,3 @@ jobs:
         run: |
           docker build -t ${{ secrets.DOCKER_USER }}/frontend:latest ./frontend
           docker tag ${{ secrets.DOCKER_USER }}/frontend:latest ${{ secrets.DOCKER_USER }}/frontend:${{ github.sha }}
-
-      - name: Build db image
-        run: |
-          docker build -t ${{ secrets.DOCKER_USER }}/db:latest ./db
-          docker tag ${{ secrets.DOCKER_USER }}/db:latest ${{ secrets.DOCKER_USER }}/db:${{ github.sha }}
