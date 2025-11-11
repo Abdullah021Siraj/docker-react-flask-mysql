@@ -3,7 +3,7 @@ name: Dev Health Check
 on:
   push:
     branches:
-      - dev   # automatically runs on dev pushes
+      - dev
 
 jobs:
   health:
@@ -12,7 +12,7 @@ jobs:
       MYSQL_DB: ${{ secrets.MYSQL_DB }}
       MYSQL_USER: ${{ secrets.MYSQL_USER }}
       MYSQL_PASSWORD: ${{ secrets.MYSQL_PASSWORD }}
-      MYSQL_HOST: db
+      MYSQL_HOST: ${{ secrets.MYSQL_HOST }}
       REACT_APP_API_URL: ${{ secrets.REACT_APP_API_URL }}
 
     steps:
@@ -22,7 +22,32 @@ jobs:
       - name: Build and start services
         run: docker compose up -d --build
 
-      - name: Health check
+      - name: Wait for Frontend and Backend
         run: |
-          curl -f http://localhost:3001/ || { echo "Frontend is DOWN"; exit 1; }
-          curl -f http://localhost:5000/items || { echo "Backend is DOWN"; exit 1; }
+          # Retry frontend
+          for i in {1..10}; do
+            if curl -f http://localhost:3001/ > /dev/null 2>&1; then
+              echo "Frontend is UP"
+              break
+            fi
+            echo "Waiting for frontend... ($i/10)"
+            sleep 3
+            if [ $i -eq 10 ]; then
+              echo "Frontend failed to start"
+              exit 1
+            fi
+          done
+
+          # Retry backend
+          for i in {1..10}; do
+            if curl -f http://localhost:5000/items > /dev/null 2>&1; then
+              echo "Backend is UP"
+              break
+            fi
+            echo "Waiting for backend... ($i/10)"
+            sleep 3
+            if [ $i -eq 10 ]; then
+              echo "Backend failed to start"
+              exit 1
+            fi
+          done
