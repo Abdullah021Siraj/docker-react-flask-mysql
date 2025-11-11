@@ -35,19 +35,6 @@ jobs:
 
       - name: DB connectivity test from backend container
         run: |
-          docker exec flask-backend python -c "
-import pymysql, sys
-try:
-    pymysql.connect(
-        host='db',
-        user='${MYSQL_USER}',
-        password='${MYSQL_PASSWORD}',
-        db='${MYSQL_DB}'
-    )
-except Exception as e:
-    print(e)
-    sys.exit(1)
-"
-
-      - name: Tear down services
-        run: docker-compose down
+          docker exec flask-backend python -c "import pymysql, sys; \
+try: pymysql.connect(host='db', user='${MYSQL_USER}', password='${MYSQL_PASSWORD}', db='${MYSQL_DB}'); \
+except Exception as e: print(e); sys.exit(1)"
