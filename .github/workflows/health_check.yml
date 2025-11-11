@@ -23,4 +23,6 @@ jobs:
         run: docker compose up -d --build
 
       - name: Health check
-        run: curl -f http://localhost:3001/ || exit 1
+        run: |
+          curl -f http://localhost:3001/ || { echo "Frontend is DOWN"; exit 1; }
+          curl -f http://localhost:5000/items || { echo "Backend is DOWN"; exit 1; }
