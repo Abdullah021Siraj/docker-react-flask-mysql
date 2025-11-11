@@ -16,17 +16,19 @@ jobs:
       REACT_APP_API_URL: ${{ secrets.REACT_APP_API_URL }}
 
     steps:
-      - name: Checkout repo
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Docker Compose
-        run: docker compose up -d --build
+      - name: Build and start services
+        run: docker-compose up -d --build
 
-      - name: Wait for services to start
-        run: sleep 15  # give MySQL + backend + frontend time
-
-      - name: Backend health check
-        run: curl -f http://localhost:5000/health || exit 1
+      - name: Wait for backend to be ready
+        run: |
+          for i in {1..20}; do
+            curl -f http://localhost:5000/health && break
+            echo "Waiting for backend..."
+            sleep 3
+          done
 
       - name: Frontend health check
         run: curl -f http://localhost:3001/ || exit 1
@@ -37,7 +39,7 @@ jobs:
 import pymysql, sys
 try:
     pymysql.connect(
-        host='${MYSQL_HOST}',
+        host='db',
         user='${MYSQL_USER}',
         password='${MYSQL_PASSWORD}',
         db='${MYSQL_DB}'
@@ -48,4 +50,4 @@ except Exception as e:
 "
 
       - name: Tear down services
-        run: docker compose down
+        run: docker-compose down
