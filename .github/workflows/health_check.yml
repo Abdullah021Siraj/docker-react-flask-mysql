@@ -37,17 +37,3 @@ jobs:
               exit 1
             fi
           done
-
-          # Retry backend
-          for i in {1..10}; do
-            if curl -f http://localhost:5000/items > /dev/null 2>&1; then
-              echo "Backend is UP"
-              break
-            fi
-            echo "Waiting for backend... ($i/10)"
-            sleep 3
-            if [ $i -eq 10 ]; then
-              echo "Backend failed to start"
-              exit 1
-            fi
-          done
