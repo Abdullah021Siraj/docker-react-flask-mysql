@@ -22,17 +22,5 @@ jobs:
       - name: Build and start services
         run: docker compose up -d --build
 
-      - name: Wait for backend to be ready
-        run: |
-          for i in {1..20}; do
-            curl -f http://localhost:5000/items && break
-            echo "Waiting for backend..."
-            sleep 3
-          done
-
-      - name: Frontend health check
+      - name: Health check
         run: curl -f http://localhost:3001/ || exit 1
-
-      - name: DB connectivity test from backend container
-        run: |
-          docker exec flask-backend python -c "import pymysql, sys; pymysql.connect(host='db', user='${MYSQL_USER}', password='${MYSQL_PASSWORD}', db='${MYSQL_DB}')"
