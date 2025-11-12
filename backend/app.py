@@ -67,6 +67,12 @@ def delete_item(item_id):
     db.session.commit()
     return jsonify({"status": "deleted"})
 
+app = Flask(__name__)
+
+@app.route("/health")
+def health():
+    return {"status": "ok"}, 200
+
 
 if __name__ == "__main__":
     with app.app_context():

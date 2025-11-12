@@ -1,0 +1,39 @@
+name: Dev Health Check
+
+on:
+  push:
+    branches:
+      - dev
+
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    env:
+      MYSQL_DB: ${{ secrets.MYSQL_DB }}
+      MYSQL_USER: ${{ secrets.MYSQL_USER }}
+      MYSQL_PASSWORD: ${{ secrets.MYSQL_PASSWORD }}
+      MYSQL_HOST: ${{ secrets.MYSQL_HOST }}
+      REACT_APP_API_URL: ${{ secrets.REACT_APP_API_URL }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build and start services
+        run: docker compose up -d --build
+
+      - name: Wait for Frontend and Backend
+        run: |
+          # Retry frontend
+          for i in {1..10}; do
+            if curl -f http://localhost:3001/ > /dev/null 2>&1; then
+              echo "Frontend is UP"
+              break
+            fi
+            echo "Waiting for frontend... ($i/10)"
+            sleep 3
+            if [ $i -eq 10 ]; then
+              echo "Frontend failed to start"
+              exit 1
+            fi
+          done

@@ -1,0 +1,29 @@
+name: CI Pipeline
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log in to DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USER }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build backend image
+        run: |
+          docker build -t ${{ secrets.DOCKER_USER }}/backend:latest ./backend
+          docker tag ${{ secrets.DOCKER_USER }}/backend:latest ${{ secrets.DOCKER_USER }}/backend:${{ github.sha }}
+
+      - name: Build frontend image
+        run: |
+          docker build -t ${{ secrets.DOCKER_USER }}/frontend:latest ./frontend
+          docker tag ${{ secrets.DOCKER_USER }}/frontend:latest ${{ secrets.DOCKER_USER }}/frontend:${{ github.sha }}

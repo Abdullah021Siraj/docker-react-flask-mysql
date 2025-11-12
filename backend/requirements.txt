@@ -3,3 +3,8 @@ Flask-Cors==3.0.10
 PyMySQL==1.1.1
 Flask-SQLAlchemy==3.0.5
 cryptography
+pymysql
+pytest
+pytest-flask
+requests
+Werkzeug<3
