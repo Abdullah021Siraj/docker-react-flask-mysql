@@ -19,7 +19,7 @@ set -o pipefail
 
 # --- CONFIGURATION ---
 # Ports allowed to be open to the WORLD (0.0.0.0)
-GLOBAL_ALLOW_LIST=("22" "80" "443")
+GLOBAL_ALLOW_LIST=("717" "80" "443")
 
 # LOGGING & ROTATION CONFIG
 # Directory to store audit logs
