@@ -564,6 +564,303 @@ else
     echo "Docker not found. Skipping."
 fi
 
+
+echo -e "\n------------------------------------------------------"
+
+echo -e "${CYAN}>>> PART 12: DOCKER SECURITY HARDENING ${NC}"
+
+
+# Check for privileged containers
+if command -v docker >/dev/null; then
+    PRIVILEGED=$(docker ps --quiet | xargs docker inspect --format='{{.Name}} {{.HostConfig.Privileged}}' 2>/dev/null | grep "true" | wc -l)
+    
+    if [[ $PRIVILEGED -gt 0 ]]; then
+        log_result "FAIL" "CIS Docker 5.4" "$PRIVILEGED privileged containers running"
+    else
+        log_result "PASS" "CIS Docker 5.4" "No privileged containers"
+    fi
+    
+    # Check containers running as root
+    ROOT_CONTAINERS=$(docker ps --quiet | xargs docker inspect --format='{{.Name}} {{.Config.User}}' 2>/dev/null | grep -E "^ |^$" | wc -l)
+    
+    if [[ $ROOT_CONTAINERS -gt 0 ]]; then
+        log_result "WARN" "CIS Docker 4.1" "$ROOT_CONTAINERS containers running as root"
+    else
+        log_result "PASS" "CIS Docker 4.1" "All containers run as non-root"
+    fi
+    
+    # Check for containers with host network
+    HOST_NET=$(docker ps --quiet | xargs docker inspect --format='{{.Name}} {{.HostConfig.NetworkMode}}' 2>/dev/null | grep "host" | wc -l)
+    
+    if [[ $HOST_NET -gt 0 ]]; then
+        log_result "FAIL" "CIS Docker 5.9" "$HOST_NET containers using host network"
+    else
+        log_result "PASS" "CIS Docker 5.9" "No containers using host network"
+    fi
+    
+    # Check Docker daemon logging
+    DOCKER_LOG=$(docker info 2>/dev/null | grep "Logging Driver" | awk '{print $3}')
+    if [[ "$DOCKER_LOG" != "json-file" ]]; then
+        log_result "WARN" "CIS Docker 2.12" "Docker logging driver: $DOCKER_LOG"
+    else
+        log_result "PASS" "CIS Docker 2.12" "Docker logging properly configured"
+    fi
+fi
+
+echo -e "\n------------------------------------------------------"
+
+echo -e "${CYAN}>>> PART 13: SSL CHECK ${NC}"
+
+# Check SSL certificate expiration
+if [ -f /etc/nginx/ssl/*.crt ]; then
+    for cert in /etc/nginx/ssl/*.crt; do
+        EXPIRY=$(openssl x509 -enddate -noout -in "$cert" | cut -d= -f2)
+        EXPIRY_EPOCH=$(date -d "$EXPIRY" +%s)
+        NOW_EPOCH=$(date +%s)
+        DAYS_LEFT=$(( ($EXPIRY_EPOCH - $NOW_EPOCH) / 86400 ))
+        
+        if [[ $DAYS_LEFT -lt 30 ]]; then
+            log_result "FAIL" "PCI 4.1" "SSL cert expires in $DAYS_LEFT days: $cert"
+        elif [[ $DAYS_LEFT -lt 60 ]]; then
+            log_result "WARN" "PCI 4.1" "SSL cert expires in $DAYS_LEFT days: $cert"
+        else
+            log_result "PASS" "PCI 4.1" "SSL cert valid for $DAYS_LEFT days"
+        fi
+    done
+fi
+
+# Check SSL protocols
+if command -v nginx >/dev/null; then
+    SSL_PROTOCOLS=$(grep -r "ssl_protocols" /etc/nginx/ | grep -v "#")
+    if echo "$SSL_PROTOCOLS" | grep -q "TLSv1.3\|TLSv1.2"; then
+        if echo "$SSL_PROTOCOLS" | grep -qE "SSLv2|SSLv3|TLSv1[^.23]"; then
+            log_result "FAIL" "PCI 4.1" "Weak SSL protocols enabled"
+        else
+            log_result "PASS" "PCI 4.1" "Strong SSL protocols configured"
+        fi
+    else
+        log_result "FAIL" "PCI 4.1" "No modern TLS protocols found"
+    fi
+fi
+
+echo -e "\n------------------------------------------------------"
+
+echo -e "${CYAN}>>> PART 14: BACKUP CHECK ${NC}"
+
+# Check for backup tools and recent backups
+BACKUP_TOOLS=("duplicity" "bacula-fd" "rsync" "restic" "borg")
+BACKUP_FOUND=0
+
+for tool in "${BACKUP_TOOLS[@]}"; do
+    if command -v "$tool" >/dev/null; then
+        log_result "INFO" "Backup" "Backup tool detected: $tool"
+        BACKUP_FOUND=1
+    fi
+done
+
+if [[ $BACKUP_FOUND -eq 0 ]]; then
+    log_result "FAIL" "Backup" "No backup software detected" "Install backup solution"
+fi
+
+# Check for recent backups
+BACKUP_DIRS=("/backup" "/var/backups" "/mnt/backup")
+for dir in "${BACKUP_DIRS[@]}"; do
+    if [ -d "$dir" ]; then
+        LATEST=$(find "$dir" -type f -mtime -1 2>/dev/null | wc -l)
+        if [[ $LATEST -gt 0 ]]; then
+            log_result "PASS" "Backup" "Recent backup found in $dir"
+        else
+            log_result "WARN" "Backup" "No recent backups in $dir (>24h)"
+        fi
+    fi
+done
+
+echo -e "\n------------------------------------------------------"
+
+
+echo -e "${CYAN}>>> PART 15: SECURITY UPDATES ${NC}"
+
+# Check for available security updates
+if command -v apt >/dev/null; then
+    apt update -qq 2>/dev/null
+    SECURITY_UPDATES=$(apt list --upgradable 2>/dev/null | grep -i security | wc -l)
+    
+    if [[ $SECURITY_UPDATES -eq 0 ]]; then
+        log_result "PASS" "PCI 6.2" "No security updates pending"
+    elif [[ $SECURITY_UPDATES -lt 5 ]]; then
+        log_result "WARN" "PCI 6.2" "$SECURITY_UPDATES security updates available"
+    else
+        log_result "FAIL" "PCI 6.2" "$SECURITY_UPDATES security updates pending"
+    fi
+fi
+
+# Check last update time
+if [ -f /var/log/apt/history.log ]; then
+    LAST_UPDATE=$(grep "Start-Date:" /var/log/apt/history.log | tail -1 | awk '{print $2}')
+    LAST_UPDATE_DAYS=$(( ($(date +%s) - $(date -d "$LAST_UPDATE" +%s)) / 86400 ))
+    
+    if [[ $LAST_UPDATE_DAYS -gt 30 ]]; then
+        log_result "FAIL" "PCI 6.2" "System not updated in $LAST_UPDATE_DAYS days"
+    elif [[ $LAST_UPDATE_DAYS -gt 7 ]]; then
+        log_result "WARN" "PCI 6.2" "Last update $LAST_UPDATE_DAYS days ago"
+    else
+        log_result "PASS" "PCI 6.2" "System updated $LAST_UPDATE_DAYS days ago"
+    fi
+fi
+
+# Check if unattended-upgrades is enabled
+if dpkg -l | grep -q unattended-upgrades; then
+    if systemctl is-enabled unattended-upgrades >/dev/null 2>&1; then
+        log_result "PASS" "PCI 6.2" "Automatic security updates enabled"
+    else
+        log_result "WARN" "PCI 6.2" "Unattended-upgrades installed but not enabled"
+    fi
+else
+    log_result "FAIL" "PCI 6.2" "Automatic updates not configured"
+fi
+
+echo -e "\n------------------------------------------------------"
+
+echo -e "${CYAN}>>> PART 16: MALWARE CHECK ${NC}"
+
+# Check for anti-malware
+if command -v clamscan >/dev/null; then
+    if systemctl is-active --quiet clamav-daemon; then
+        log_result "PASS" "PCI 5.1" "ClamAV antivirus is running"
+        
+        # Check virus definitions age
+        DB_DATE=$(stat -c %Y /var/lib/clamav/daily.cvd 2>/dev/null || echo 0)
+        CURRENT_DATE=$(date +%s)
+        DAYS_OLD=$(( ($CURRENT_DATE - $DB_DATE) / 86400 ))
+        
+        if [[ $DAYS_OLD -gt 7 ]]; then
+            log_result "FAIL" "PCI 5.1" "Virus definitions $DAYS_OLD days old"
+        else
+            log_result "PASS" "PCI 5.1" "Virus definitions up to date"
+        fi
+    else
+        log_result "WARN" "PCI 5.1" "ClamAV installed but not running"
+    fi
+else
+    log_result "FAIL" "PCI 5.1" "No antivirus software detected"
+fi
+
+# Check for rootkit detection
+if command -v rkhunter >/dev/null; then
+    log_result "PASS" "Security" "Rootkit detection tool installed"
+else
+    log_result "WARN" "Security" "No rootkit detection tool found"
+fi
+
+# Check Fail2ban
+if systemctl is-active --quiet fail2ban; then
+    JAILS=$(fail2ban-client status | grep "Jail list" | sed 's/.*://;s/,//g')
+    JAIL_COUNT=$(echo $JAILS | wc -w)
+    if [[ $JAIL_COUNT -gt 0 ]]; then
+        log_result "PASS" "PCI 8.1.6" "Fail2ban active with $JAIL_COUNT jails"
+    else
+        log_result "WARN" "PCI 8.1.6" "Fail2ban running but no jails configured"
+    fi
+else
+    log_result "FAIL" "PCI 8.1.6" "Fail2ban not running" "Install and configure fail2ban"
+fi
+
+# Check for AIDE (file integrity)
+if command -v aide >/dev/null; then
+    if [ -f /var/lib/aide/aide.db ]; then
+        log_result "PASS" "PCI 11.5" "AIDE file integrity monitoring configured"
+    else
+        log_result "WARN" "PCI 11.5" "AIDE installed but database not initialized"
+    fi
+else
+    log_result "WARN" "PCI 11.5" "No file integrity monitoring (AIDE) detected"
+fi
+
+echo -e "\n------------------------------------------------------"
+
+echo -e "${CYAN}>>> PART 17: SYSTEM RESOURCE & PERFORMANCE MONITORING ${NC}"
+
+# Check disk space
+DISK_USAGE=$(df -h / | awk 'NR==2 {print $5}' | tr -d '%')
+if [[ $DISK_USAGE -gt 90 ]]; then
+    log_result "FAIL" "System" "Root partition ${DISK_USAGE}% full"
+elif [[ $DISK_USAGE -gt 80 ]]; then
+    log_result "WARN" "System" "Root partition ${DISK_USAGE}% full"
+else
+    log_result "PASS" "System" "Root partition ${DISK_USAGE}% used"
+fi
+
+# Check memory usage
+MEM_USED=$(free | awk 'NR==2 {printf "%.0f", $3/$2 * 100}')
+if [[ $MEM_USED -gt 90 ]]; then
+    log_result "WARN" "System" "Memory usage ${MEM_USED}%"
+else
+    log_result "PASS" "System" "Memory usage ${MEM_USED}%"
+fi
+
+# Check for monitoring agents
+MON_AGENTS=("prometheus" "node_exporter" "telegraf" "datadog-agent" "zabbix_agentd")
+for agent in "${MON_AGENTS[@]}"; do
+    if systemctl is-active --quiet "$agent" 2>/dev/null; then
+        log_result "PASS" "Monitoring" "Monitoring agent running: $agent"
+    fi
+done
+
+echo -e "\n------------------------------------------------------"
+
+echo -e "${CYAN}>>> PART 18: LOG ROTATION ${NC}"
+
+# Check log rotation
+if [ -f /etc/logrotate.conf ]; then
+    log_result "PASS" "Logging" "Logrotate configured"
+    
+    # Check rotation frequency
+    ROTATE_FREQ=$(grep "^daily\|^weekly\|^monthly" /etc/logrotate.conf | head -1)
+    if [ -n "$ROTATE_FREQ" ]; then
+        log_result "INFO" "Logging" "Log rotation: $ROTATE_FREQ"
+    fi
+else
+    log_result "WARN" "Logging" "Logrotate not configured"
+fi
+
+# Check remote logging
+if grep -r "@.*:514\|@@.*:514" /etc/rsyslog.d/ /etc/rsyslog.conf 2>/dev/null | grep -v "^#"; then
+    log_result "PASS" "PCI 10.5" "Remote log forwarding configured"
+else
+    log_result "WARN" "PCI 10.5" "No remote log forwarding detected"
+fi
+
+# Check time synchronization (CRITICAL)
+if systemctl is-active --quiet chronyd || systemctl is-active --quiet ntpd; then
+    if systemctl is-active --quiet chronyd; then
+        TIME_SERVICE="chronyd"
+    else
+        TIME_SERVICE="ntpd"
+    fi
+    log_result "PASS" "PCI 10.4" "Time synchronization active ($TIME_SERVICE)"
+    
+    # Check time sync status
+    if command -v chronyc >/dev/null; then
+        SYNC_STATUS=$(chronyc tracking | grep "System time" | awk '{print $4}')
+        log_result "INFO" "PCI 10.4" "Time offset: $SYNC_STATUS seconds"
+    fi
+else
+    log_result "FAIL" "PCI 10.4" "Time synchronization not running" "Install and enable chrony or ntp"
+fi
+
+# Check log file permissions
+CRITICAL_LOGS=("/var/log/auth.log" "/var/log/syslog" "/var/log/audit/audit.log")
+for logfile in "${CRITICAL_LOGS[@]}"; do
+    if [ -f "$logfile" ]; then
+        LOG_PERM=$(stat -c "%a" "$logfile")
+        if [[ $LOG_PERM -le 640 ]]; then
+            log_result "PASS" "PCI 10.5.1" "$logfile permissions secure ($LOG_PERM)"
+        else
+            log_result "WARN" "PCI 10.5.1" "$logfile permissions: $LOG_PERM"
+        fi
+    fi
+done
+
 echo -e "\n------------------------------------------------------"
 
 # =========================================================
